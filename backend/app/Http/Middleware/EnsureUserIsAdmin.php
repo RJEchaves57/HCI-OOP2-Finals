@@ -1,0 +1,24 @@
+<?php
+
+namespace App\Http\Middleware;
+
+use Closure;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
+
+class EnsureUserIsAdmin
+{
+    /**
+     * Reject members who cannot manage the product catalogue.
+     */
+    public function handle(Request $request, Closure $next): Response
+    {
+        if (! $request->user()?->isAdmin()) {
+            return response()->json([
+                'message' => 'This action requires administrator access.',
+            ], 403);
+        }
+
+        return $next($request);
+    }
+}
