@@ -1,45 +1,71 @@
-# ROG Elite Web
+# ROG Elite
 
-Front-end for the ROG Elite experience, built with React, TypeScript, Vite,
-React Router and Tailwind CSS.
+Two projects in one repository:
 
-## Getting Started
+```text
+frontend/   React + TypeScript + Vite + React Router + Tailwind CSS
+backend/    Laravel 12 + Sanctum REST API
+scripts/    Dev launcher
+```
+
+## Run everything
+
+From this folder:
 
 ```bash
-npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+That starts both servers and streams their logs with `[api]` / `[web]` prefixes.
+The URLs it actually uses are printed at the top:
 
-## Scripts
+- App: <http://localhost:3000/login>
+- API: <http://localhost:8000/api>
+- Health check: <http://localhost:8000/api/health>
 
-- `npm run dev` — start the Vite dev server on port 3000
-- `npm run build` — type-check with TypeScript and build for production
-- `npm run preview` — preview the production build
-- `npm run lint` — run ESLint
-- `npm run typecheck` — run TypeScript without emitting files
+Press `Ctrl+C` once to stop both.
 
-## Routes
+Run just one side when needed:
 
-- `/` — ROG Elite landing page
-- `/login` — account login, member dashboard and admin console
-- `/signup` — account registration
-- `/forgot-password` — password recovery
-
-## Project Structure
-
-```text
-index.html
-vite.config.ts
-src/
-  main.tsx          app entry + BrowserRouter
-  App.tsx           route table
-  index.css         Tailwind entry + ROG font
-  components/       Header, Footer
-  hooks/            usePageTitle
-  pages/            LandingPage, LoginPage, SignupPage, ForgotPasswordPage
+```bash
+npm run dev:backend    # Laravel only
+npm run dev:frontend   # Vite only
 ```
 
-The Laravel API that backs this client lives outside this repository and is
-unchanged by this front-end.
+Ports default to `3000` (app) and `8000` (API). If another program already
+holds one of them, the launcher moves to the next free port, rewires the
+backend's `FRONTEND_URL` CORS setting and the app's `VITE_API_URL` to match,
+and prints the URLs it used. Set `FRONTEND_PORT` / `API_PORT` to choose the
+starting ports yourself.
+
+## First-time setup
+
+Front-end dependencies are already installed in `frontend/`; if you move the
+project or clone it fresh:
+
+```bash
+cd frontend
+npm install
+```
+
+Back-end dependencies and database:
+
+```bash
+cd backend
+composer install
+copy .env.example .env       # cp on macOS/Linux
+php artisan key:generate
+php artisan migrate:fresh --seed
+```
+
+## Demo accounts
+
+| Role  | Email            | Password       |
+| ----- | ---------------- | -------------- |
+| Admin | `admin@rog.test` | `Password123!` |
+| User  | `gamer@rog.test` | `Password123!` |
+
+The API base URL defaults to `http://localhost:8000/api`; override it with
+`VITE_API_URL` in `frontend/.env`. See
+[`frontend/README.md`](frontend/README.md) and [`backend/README.md`](backend/README.md)
+for details.
