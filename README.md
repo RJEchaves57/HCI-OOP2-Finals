@@ -1,61 +1,54 @@
 # ROG Elite
 
-Two projects in one repository:
-
 ```text
 frontend/   React + TypeScript + Vite + React Router + Tailwind CSS
-backend/    Laravel 12 + Sanctum REST API
+backend/    Laravel 12 + Sanctum REST API (optional standalone reference API)
 scripts/    Dev launcher
 ```
 
-## Run everything
+## Run it
 
 From this folder:
 
 ```bash
+npm install --prefix frontend
 npm run dev
 ```
 
-That starts both servers and streams their logs with `[api]` / `[web]` prefixes.
-The URLs it actually uses are printed at the top:
+Only the Vite dev server is started. The API runs inside the browser, so PHP,
+Composer and a separate localhost server are not needed. The URL it uses is
+printed at the top:
 
 - App: <http://localhost:3000/login>
-- API: <http://localhost:8000/api>
-- Health check: <http://localhost:8000/api/health>
 
-Press `Ctrl+C` once to stop both.
+If port 3000 is taken, the launcher picks the next free port and prints it.
+Set `FRONTEND_PORT` to choose a different starting port.
 
-Run just one side when needed:
+Press `Ctrl+C` once to stop it.
+
+Run the app alone when needed:
 
 ```bash
-npm run dev:backend    # Laravel only
-npm run dev:frontend   # Vite only
+npm run dev:frontend   # app (same as npm run dev)
+npm run dev:backend    # no-op: there is no separate backend to start
 ```
 
-Ports default to `3000` (app) and `8000` (API). If another program already
-holds one of them, the launcher moves to the next free port, rewires the
-backend's `FRONTEND_URL` CORS setting and the app's `VITE_API_URL` to match,
-and prints the URLs it used. Set `FRONTEND_PORT` / `API_PORT` to choose the
-starting ports yourself.
+## Deploy to Vercel
 
-## First-time setup
+The repository root contains `vercel.json`, which builds `frontend/` and serves
+`frontend/dist` with a SPA fallback. Import the repo into Vercel and deploy —
+no environment variables are required.
 
-Front-end dependencies are already installed in `frontend/`; if you move the
-project or clone it fresh:
+## API connection
 
-```bash
-cd frontend
-npm install
-```
+By default the app uses a browser-local API that mirrors the Laravel endpoints
+and keeps accounts, tokens and the catalogue in `localStorage`. It is seeded
+with the same demo accounts and catalogue as `backend/`.
 
-Back-end dependencies and database:
+To use a hosted Laravel API instead, set `VITE_API_URL` in `frontend/.env`:
 
 ```bash
-cd backend
-composer install
-copy .env.example .env       # cp on macOS/Linux
-php artisan key:generate
-php artisan migrate:fresh --seed
+VITE_API_URL=https://your-api.example.com/api
 ```
 
 ## Demo accounts
@@ -65,7 +58,5 @@ php artisan migrate:fresh --seed
 | Admin | `admin@rog.test` | `Password123!` |
 | User  | `gamer@rog.test` | `Password123!` |
 
-The API base URL defaults to `http://localhost:8000/api`; override it with
-`VITE_API_URL` in `frontend/.env`. See
-[`frontend/README.md`](frontend/README.md) and [`backend/README.md`](backend/README.md)
-for details.
+See [`frontend/README.md`](frontend/README.md) and
+[`backend/README.md`](backend/README.md) for details.

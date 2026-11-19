@@ -1,9 +1,21 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Eye, EyeOff, LogOut, LayoutDashboard, User, ShieldAlert, ChevronDown, Laptop, Cpu, HardDrive, PlusCircle, Tag, Layers } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import {
+    clearToken,
+    createProduct,
+    describeApiError,
+    getToken,
+    listProducts,
+    login,
+    logout,
+    me,
+    type ApiProduct,
+    type RewardsSummary,
+} from "@/lib/api";
 
 
 interface ProductItem {
@@ -13,6 +25,25 @@ interface ProductItem {
     price: string;
     description: string;
 }
+
+const DEFAULT_REWARDS: RewardsSummary = {
+    points: 100,
+    tier: "explorer",
+    tier_label: "EXPLORER",
+    next_tier: "vanguard",
+    next_tier_label: "VANGUARD",
+    next_tier_points: 600,
+    points_to_next_tier: 500,
+    progress_percent: 17,
+};
+
+const mapProduct = (product: ApiProduct): ProductItem => ({
+    id: String(product.id),
+    name: product.name,
+    category: product.category,
+    price: product.price_formatted,
+    description: product.description ?? "No additional setup specifications provided.",
+});
 
 export default function LoginPage() {
     usePageTitle("Account Login | ROG - Republic of Gamers");
@@ -26,11 +57,8 @@ export default function LoginPage() {
     const [activeTab, setActiveTab] = useState("home");
     const [showProductsDropdown, setShowProductsDropdown] = useState(false);
 
-    const [products, setProducts] = useState<ProductItem[]>([
-        { id: "1", name: "ROG Strix SCAR 18 (2026)", category: "laptop", price: "₱189,995.00", description: "Intel Core i9 with NVIDIA RTX 5080 Laptop GPU." },
-        { id: "2", name: "ROG Maximus Z890 Hero", category: "cpu", price: "₱38,500.00", description: "Premium ATX motherboard engineered for extreme overclocking performance." },
-        { id: "3", name: "ROG Strix GeForce RTX 5090 OC", category: "gpu", price: "₱134,900.00", description: "Next-gen architecture equipped with axial-tech cooling sets." }
-    ]);
+    const [products, setProducts] = useState<ProductItem[]>([]);
+    const [rewards, setRewards] = useState<RewardsSummary | null>(null);
 
   
     const [newProdName, setNewProdName] = useState("");
@@ -43,6 +71,7 @@ export default function LoginPage() {
     const [googlePassword, setGooglePassword] = useState("");
 
     const [nativeEmail, setNativeEmail] = useState("");
+    const [nativePassword, setNativePassword] = useState("");
   
     const formatUserIdentity = (input: string) => {
         if (!input) return "ROG Elite Member";
@@ -51,30 +80,56 @@ export default function LoginPage() {
         return cleanName.toUpperCase();
     };
 
-    const handleNativeSignIn = (e: FormEvent) => {
-        e.preventDefault();
-        const inputData = nativeEmail.trim();
+    useEffect(() => {
+        let cancelled = false;
 
-        if (inputData.toLowerCase().includes("admin")) {
-            setUserRole("admin");
-            setCurrentUser({
-                name: "ADMINISTRATOR ROOT",
-                email: inputData.includes("@") ? inputData : "admin@rog.asus.com"
-            });
-        } else {
-            setUserRole("user");
-            setCurrentUser({
-                name: formatUserIdentity(inputData),
-                email: inputData.includes("@") ? inputData : `${inputData.toLowerCase().replace(/\s+/g, "")}@gmail.com`
-            });
+        listProducts()
+            .then(items => {
+                if (!cancelled) setProducts(items.map(mapProduct));
+            })
+            .catch(error => console.error("Unable to load the ROG catalogue", error));
+
+        if (getToken()) {
+            me()
+                .then(user => {
+                    if (cancelled) return;
+                    setUserRole(user.role);
+                    setCurrentUser({ name: user.name, email: user.email });
+                    setRewards(user.rewards);
+                    setIsLoggedIn(true);
+                })
+                .catch(() => {
+                    clearToken();
+                });
         }
-        setIsLoggedIn(true);
-        setActiveTab("home");
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    const handleNativeSignIn = async (e: FormEvent) => {
+        e.preventDefault();
+
+        try {
+            const session = await login(nativeEmail.trim(), nativePassword);
+            setUserRole(session.data.role);
+            setCurrentUser({ name: session.data.name, email: session.data.email });
+            setRewards(session.data.rewards);
+            setIsLoggedIn(true);
+            setActiveTab("home");
+            setNativePassword("");
+        } catch (error) {
+            alert(describeApiError(error));
+        }
     };
 
-    const handleGoogleSignUpSubmit = (e: FormEvent) => {
+    const handleGoogleSignUpSubmit = async (e: FormEvent) => {
         e.preventDefault();
         if (!googleEmail) return;
+
+        // Google OAuth is a UI demo in this project, so drop any real API session first.
+        await logout();
 
         const mailTarget = googleEmail.trim();
         setUserRole("user");
@@ -82,47 +137,64 @@ export default function LoginPage() {
             name: formatUserIdentity(mailTarget),
             email: mailTarget
         });
+        setRewards(DEFAULT_REWARDS);
         setShowGoogleModal(false);
         setIsLoggedIn(true);
         setActiveTab("home");
     };
 
     
-    const handleAddProduct = (e: FormEvent) => {
+    const handleAddProduct = async (e: FormEvent) => {
         e.preventDefault();
         if (!newProdName || !newProdPrice) return;
 
-        const formattedPrice = newProdPrice.startsWith("₱") ? newProdPrice : `₱${parseFloat(newProdPrice).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+        const parsedPrice = Number(newProdPrice.replace(/[^0-9.]/g, ""));
 
-        const newProduct: ProductItem = {
-            id: Date.now().toString(),
-            name: newProdName,
-            category: newProdCategory,
-            price: formattedPrice,
-            description: newProdDesc || "No additional setup specifications provided."
-        };
+        if (!Number.isFinite(parsedPrice)) {
+            alert("Please enter a valid numeric price value.");
+            return;
+        }
 
-        setProducts([newProduct, ...products]);
+        try {
+            const created = await createProduct({
+                name: newProdName,
+                category: newProdCategory,
+                price: parsedPrice,
+                description: newProdDesc || undefined,
+            });
 
-        
-        setNewProdName("");
-        setNewProdPrice("");
-        setNewProdDesc("");
-        alert(`Successfully deployed "${newProdName}" to the active catalog database!`);
+            setProducts([mapProduct(created), ...products]);
+
+            
+            setNewProdName("");
+            setNewProdPrice("");
+            setNewProdDesc("");
+            alert(`Successfully deployed "${newProdName}" to the active catalog database!`);
+        } catch (error) {
+            alert(describeApiError(error));
+        }
     };
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
+        await logout();
         setIsLoggedIn(false);
         setNativeEmail("");
+        setNativePassword("");
         setGoogleEmail("");
         setGooglePassword("");
         setCurrentUser({ name: "", email: "" });
+        setRewards(null);
     };
 
   
     const laptopsList = products.filter(p => p.category === "laptop");
     const cpusList = products.filter(p => p.category === "cpu");
     const gpusList = products.filter(p => p.category === "gpu");
+
+    const rewardsSummary = rewards ?? DEFAULT_REWARDS;
+    const rewardsLabel = rewardsSummary.next_tier_points
+        ? `${rewardsSummary.tier_label} TIER (${rewardsSummary.points} / ${rewardsSummary.next_tier_points})`
+        : `${rewardsSummary.tier_label} TIER`;
 
     if (isLoggedIn) {
         return (
@@ -363,21 +435,21 @@ export default function LoginPage() {
                                             <div>
                                                 <h1 className="text-3xl font-black uppercase tracking-tight italic text-white">ROG ELITE REWARDS</h1>
                                                 <h2 className="text-xl font-bold uppercase tracking-tight text-gray-200 mt-1">{currentUser.name}</h2>
-                                                <p className="text-xs uppercase tracking-widest font-bold text-red-500 mt-0.5">EXPLORER TIER (100 / 600)</p>
+                                                <p className="text-xs uppercase tracking-widest font-bold text-red-500 mt-0.5">{rewardsLabel}</p>
                                                 <p className="text-xs text-gray-400 mt-1">{currentUser.email}</p>
                                             </div>
                                         </div>
 
                                         <div className="relative z-10 bg-black/40 border border-gray-800 px-8 py-4 rounded text-center min-w-[140px]">
                                             <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block">My Points</span>
-                                            <span className="text-4xl font-black italic text-red-500 mt-1 block drop-shadow-[0_0_15px_rgba(225,0,18,0.5)]">100</span>
+                                            <span className="text-4xl font-black italic text-red-500 mt-1 block drop-shadow-[0_0_15px_rgba(225,0,18,0.5)]">{rewardsSummary.points}</span>
                                         </div>
                                     </div>
 
                                     <div className="border border-gray-800 bg-[#0c0c16] rounded p-6">
                                         <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-4 border-b border-gray-800 pb-2">Loyalty Reward Progress</h3>
                                         <div className="w-full bg-gray-900 h-2 rounded-full overflow-hidden mb-2">
-                                            <div className="bg-red-600 h-full w-[16.6%]" />
+                                            <div className="bg-red-600 h-full" style={{ width: `${rewardsSummary.progress_percent}%` }} />
                                         </div>
                                         <p className="text-[11px] text-gray-500">Accumulate more system activity records to unlock premium desktop peripherals.</p>
                                     </div>
@@ -419,6 +491,9 @@ export default function LoginPage() {
                             <div className="relative">
                                 <input
                                     type={showPassword ? "text" : "password"}
+                                    required
+                                    value={nativePassword}
+                                    onChange={(e) => setNativePassword(e.target.value)}
                                     placeholder="Password"
                                     className="w-full bg-white p-3 outline-none border border-gray-400 focus:border-black text-sm pr-10 text-black"
                                 />

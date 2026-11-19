@@ -1,15 +1,22 @@
-import { useState, useRef, useEffect, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { useState, useRef, useEffect, type FormEvent, type ReactNode } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, ChevronDown } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import { clearToken, describeApiError, register } from "@/lib/api";
 
 export default function SignupPage() {
     usePageTitle("Sign up | ROG");
 
+    const navigate = useNavigate();
+
     const [showPass, setShowPass] = useState(false);
     const [showRePass, setShowRePass] = useState(false);
+
+    const [account, setAccount] = useState("");
+    const [password, setPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
 
 
     const [agreeAll, setAgreeAll] = useState(false);
@@ -26,6 +33,39 @@ export default function SignupPage() {
         setCheck2(newState);
         setCheck3(newState);
         setCheck4(newState);
+    };
+
+    const displayNameFromEmail = (email: string) => {
+        const reference = email.includes("@") ? email.split("@")[0] : email;
+        const name = reference.replace(/[._-]/g, " ").trim();
+
+        if (!name) return "ROG Elite Member";
+
+        return name.replace(/\b\w/g, (character) => character.toUpperCase());
+    };
+
+    const handleSignup = async (e: FormEvent) => {
+        e.preventDefault();
+
+        if (password !== confirmPassword) {
+            alert("Passwords do not match.");
+            return;
+        }
+
+        try {
+            await register({
+                name: displayNameFromEmail(account.trim()),
+                email: account.trim(),
+                password,
+                password_confirmation: confirmPassword,
+            });
+
+            alert("Account created successfully. Please sign in.");
+            clearToken();
+            navigate("/login");
+        } catch (error) {
+            alert(describeApiError(error));
+        }
     };
 
     const years = Array.from({ length: 50 }, (_, i) => (2026 - i).toString());
@@ -72,11 +112,16 @@ export default function SignupPage() {
                         <div className="flex-1 h-px bg-gray-200"></div>
                     </div>
 
-                    <form className="space-y-6">
+                    <form className="space-y-6" onSubmit={handleSignup}>
 
                         <div>
                             <label className="block text-xs font-bold italic text-gray-700">* Account</label>
-                            <input type="text" className="w-full border border-gray-400 p-2 text-sm focus:border-black outline-none" />
+                            <input
+                                type="text"
+                                value={account}
+                                onChange={(e) => setAccount(e.target.value)}
+                                className="w-full border border-gray-400 p-2 text-sm focus:border-black outline-none"
+                            />
                             <p className="text-[10px] text-gray-400 mt-1 italic">Please enter your email</p>
                         </div>
 
@@ -86,6 +131,8 @@ export default function SignupPage() {
                             <div className="relative">
                                 <input
                                     type={showPass ? "text" : "password"}
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
                                     className="w-full border border-gray-400 p-2 pr-10 text-xs focus:border-black outline-none"
                                 />
                                 <button
@@ -108,6 +155,8 @@ export default function SignupPage() {
                             <div className="relative">
                                 <input
                                     type={showRePass ? "text" : "password"}
+                                    value={confirmPassword}
+                                    onChange={(e) => setConfirmPassword(e.target.value)}
                                     className="w-full border border-gray-400 p-2 pr-10 text-xs focus:border-black outline-none"
                                 />
                                 <button
